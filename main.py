@@ -11,8 +11,6 @@ def main():
   files = get_changed_files(owner, repo, pull_number)
  # print("keys:", files[0].keys())
 
-  
-
 if __name__ == "__main__":
     main()
 

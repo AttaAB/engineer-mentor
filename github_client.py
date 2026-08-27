@@ -7,14 +7,6 @@ def get_pull_request(owner, repo, pull_number): #function returns the single pul
   response.raise_for_status()
   return response.json()
 
-def get_repo(owner, repo): #function returns the repository information
-  url = f"https://api.github.com/repos/{owner}/{repo}"
-  
-  response = httpx.get(url)
-  response.raise_for_status()
-
-  return response.json()
-
 def get_changed_files(owner, repo, pull_number): #function returns the files changed in a pull request and prints the filename, status, changes, and patch for each file
   url = f"https://api.github.com/repos/{owner}/{repo}/pulls/{pull_number}/files"
   
@@ -29,4 +21,3 @@ def get_changed_files(owner, repo, pull_number): #function returns the files cha
     print("additions:", file["additions"])
     print("deletions:", file["deletions"])
     print("patch:", file.get("patch"), end="\n\n")
-
