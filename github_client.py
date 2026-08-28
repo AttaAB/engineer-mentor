@@ -21,3 +21,5 @@ def get_changed_files(owner, repo, pull_number): #function returns the files cha
     print("additions:", file["additions"])
     print("deletions:", file["deletions"])
     print("patch:", file.get("patch"), end="\n\n")
+    
+  return files
