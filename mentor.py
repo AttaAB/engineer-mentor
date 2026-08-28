@@ -2,12 +2,6 @@ from openai import OpenAI
 
 client = OpenAI()
 
-patch = """
-        def find_user(users, user_id):
-            for user in users:
-                if user["id"] == user_id:
-                    return user
-        """
 def generate_mentor_questions(patch):
 
   prompt = f""" 
@@ -41,5 +35,11 @@ def generate_mentor_questions(patch):
   return response.output_text
 
 if __name__ == "__main__":
-    questions = generate_mentor_questions(patch)
-    print(questions)
+  patch = """
+  def find_user(users, user_id):
+    for user in users:
+      if user["id"] == user_id:
+        return user
+  """
+  questions = generate_mentor_questions(patch)
+  print(questions)
