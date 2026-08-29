@@ -1,80 +1,62 @@
+from dotenv import load_dotenv
 from openai import OpenAI
 
 client = OpenAI()
 
-def generate_mentor_questions(filename, patch):
+def generate_mentor_questions(pr_title, context):
   prompt = f""" 
-        You are a software engineering mentor reviewing a code change.
+  You are a software engineering mentor reviewing an entire pull request.
 
-        Your goal is to help the developer reason about meaningful engineering decisions in their implementation. Do not solve the problem for them.
+  Your goal is to identify the highest-value engineering decisions in
+  the change and ask questions that cause the developer to reason about
+  their assumptions and trade-offs.
 
-        You are reviewing a code diff, not the entire repository. Only ask questions that are reasonably supported by the code shown.
+  Review the pull request as one logical change. Tests should be used
+  primarily to infer intended behavior.
 
-        Identify the most important engineering decisions introduced or affected by this change.
+  Ask 0–3 questions. Prefer one strong question over several weaker ones.
+  Return NO_QUESTIONS if there is nothing meaningful to discuss.
 
-        Prioritize concerns in roughly this order:
+  Prioritize:
+  1. correctness and behavioral contracts
+  2. reliability and error handling
+  3. architecture and API design
+  4. performance
+  5. maintainability
 
-        1. correctness and behavioral assumptions
-        2. reliability and error handling
-        3. API, architecture, and design decisions
-        4. algorithmic complexity or performance
-        5. maintainability and testing
+  A good question:
+  - is directly supported by the supplied changes
+  - focuses on the central decision before secondary edge cases
+  - asks the developer to derive consequences rather than stating them
+  - could meaningfully affect the implementation or review
 
-        These are priorities, not a checklist. Do not force a question from every category.
+  Avoid:
+  - speculative or unlikely edge cases
+  - duplicate questions
+  - trivial style feedback
+  - questions already answered by the diff
+  - giving the consequence or solution inside the question
+  - evaluating each changed file independently
 
-        Ask 0 to 3 questions.
+  You only have the supplied PR context. When information is missing,
+  question the assumption rather than claiming a defect exists.
 
-        It is better to ask one strong question than three weak questions.
+  If there are no worthwhile questions, output exactly:
+  NO_QUESTIONS
 
-        A worthwhile question should:
+  Otherwise output only a numbered list of questions.
 
-        * be tied to a specific decision or behavior visible in the diff
-        * make the developer reason about an assumption, consequence, or trade-off
-        * be relevant enough that the answer could influence the implementation or review
-        * not already be clearly answered by the diff
-        * not duplicate another question
-        * Prioritize the central engineering decision in the change.
-        * Do not invent speculative edge cases unless they reveal a realistic correctness concern supported by the code.
-        * Prefer one strong question over several weaker questions, (can still ask multiple if there is value in it).
-        * Treat tests as context for understanding the intended behavior.
-        * Do not critique test files independently unless the testing strategy itself presents a meaningful engineering decision.
-        * Do not ask questions about every changed file.
-        * Return NO_QUESTIONS when there is no meaningful engineering decision worth discussing.
+  Pull Request Title:
+  {pr_title}
 
-        Avoid:
-
-        * trivial style, formatting, or naming comments
-        * generic questions that could be asked about almost any code
-        * inventing unlikely edge cases just to produce feedback
-        * speculating about repository behavior that cannot reasonably be inferred from the diff
-        * asking about every possible test case
-        * giving the answer inside the question
-        * directly telling the developer what to change
-        * replacement code
-
-        When context is insufficient, question the assumption rather than claiming that a problem exists.
-
-        For test files, focus on whether the tests capture an important behavioral contract or reveal a meaningful missing case. Do not generate test-related questions merely because a test file changed.
-
-        If there are no meaningful engineering decisions worth questioning, output exactly:
-
-        NO_QUESTIONS
-
-        Otherwise, output only the questions as a numbered list. Do not include explanations, headings, answers, or recommendations.
-
-        File:
-        {filename}
-
-        Diff:
-        {patch}
-
-        """
-
+  Pull Request Changes:
+  {context} 
+  """
   response = client.responses.create(
     model="gpt-5.6-luna",
     input=prompt
   )
-
+  
   return response.output_text
 
 #V0 mentor questions function:  
