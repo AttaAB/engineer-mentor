@@ -1,15 +1,19 @@
+from typing import Literal
 from pydantic import BaseModel
 
+Category = Literal[
+    "correctness",
+    "reliability",
+    "architecture",
+    "performance",
+    "maintainability",
+]
+
+
 class MentorQuestion(BaseModel):
-  category: str
-  question: str
+    category: Category
+    question: str
+
 
 class MentorResponse(BaseModel):
-  questions: list[MentorQuestion]
-
-question = MentorQuestion(
-    category="correctness",
-    question="What happens if the request fails?"
-)
-
-print(question.category)  # Output: correctness
+    questions: list[MentorQuestion]
