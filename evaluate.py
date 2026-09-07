@@ -35,7 +35,7 @@ def evaluate_pr(owner, repo, pull_number):
 
     title = pr.get("title")
 
-    questions = generate_mentor_questions(
+    mentor_response = generate_mentor_questions(
         title,
         context
     )
@@ -43,8 +43,14 @@ def evaluate_pr(owner, repo, pull_number):
     print("=" * 60)
     print(f"{owner}/{repo} PR #{pull_number}")
     print(f"Title: {title}")
-    print()
-    print(questions)
+
+    if len(mentor_response.questions) == 0:
+        print("NO_QUESTIONS")
+    else:
+        for question in mentor_response.questions:
+            print(f"\nCategory: {question.category}")
+            print(f"Question: {question.question}")
+
     print()
 
 for case in test_cases:
