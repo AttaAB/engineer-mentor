@@ -1,5 +1,8 @@
 from dotenv import load_dotenv
 from openai import OpenAI
+from models import MentorResponse
+
+load_dotenv()
 
 client = OpenAI()
 
@@ -41,8 +44,7 @@ def generate_mentor_questions(pr_title, context):
   You only have the supplied PR context. When information is missing,
   question the assumption rather than claiming a defect exists.
 
-  If there are no worthwhile questions, output exactly:
-  NO_QUESTIONS
+  Return an empty questions list if there are no meaningful engineering decisions worth questioning.
 
   Otherwise output only a numbered list of questions.
 
@@ -52,12 +54,13 @@ def generate_mentor_questions(pr_title, context):
   Pull Request Changes:
   {context} 
   """
-  response = client.responses.create(
+  response = client.responses.parse(
     model="gpt-5.6-luna",
-    input=prompt
+    input=prompt,
+    text_format=MentorResponse
   )
   
-  return response.output_text
+  return response.output_parsed
 
 if __name__ == "__main__":
   patch = """
@@ -66,5 +69,5 @@ if __name__ == "__main__":
       if user["id"] == user_id:
         return user
   """
-  questions = generate_mentor_questions("example-file", patch)
-  print(questions)
+  mentor_reposnse = generate_mentor_questions("example-file", patch)
+  print(mentor_reposnse.questions)
