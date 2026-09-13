@@ -17,8 +17,15 @@ def generate_mentor_questions(pr_title, context):
   Review the pull request as one logical change. Tests should be used
   primarily to infer intended behavior.
 
-  Ask 0–3 questions. Prefer one strong question over several weaker ones.
-  Return NO_QUESTIONS if there is nothing meaningful to discuss.
+  Before choosing questions, rank the engineering decisions present
+  across the whole diff by how much they matter, using the priority
+  order below. If the PR touches multiple files, do not distribute
+  questions evenly across files just because there are multiple files —
+  most of the time only one or two decisions in the entire PR are worth
+  asking about, and the rest of the diff is supporting detail.
+
+  Ask 0–3 questions, drawn from the highest-ranked decisions only.
+  Prefer one strong question over several weaker ones.
 
   Prioritize:
   1. correctness and behavioral contracts
@@ -45,8 +52,6 @@ def generate_mentor_questions(pr_title, context):
   question the assumption rather than claiming a defect exists.
 
   Return an empty questions list if there are no meaningful engineering decisions worth questioning.
-
-  Otherwise output only a numbered list of questions.
 
   Pull Request Title:
   {pr_title}
