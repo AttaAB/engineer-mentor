@@ -14,7 +14,7 @@ import os
 import statistics
 import subprocess
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 
@@ -41,6 +41,7 @@ METRICS = {
   "precision": ("Precision", "pct"),
   "quality": ("Quality/5", "num"),
   "non_leaking": ("No-leak/5", "num"),
+  "central": ("Central/5", "num"),
   "grader_agreement": ("Grader", "pct"),
   "drop_rate": ("Dropped", "pct"),
 }
@@ -54,6 +55,7 @@ def main():
   parser.add_argument("--runs", type=int, default=3, help="runs per project (LLM output varies)")
   parser.add_argument("--projects", help="comma-separated subset of projects")
   parser.add_argument("--grader-runs", type=int, default=1, help="runs that also test the grader (costly)")
+  parser.add_argument("--jobs", type=int, default=4, help="runs evaluated in parallel (default 4)")
   args = parser.parse_args()
 
   ensure_api_key()
@@ -67,19 +69,27 @@ def main():
     "mentor_commit": _mentor_commit(),
   }
 
-  console.print(f"[bold]Eval[/] {args.config} · {len(projects)} project(s) × {args.runs} run(s) · model {meta['model']}")
+  jobs = [(project, run) for project in projects for run in range(1, args.runs + 1)]
+  console.print(f"[bold]Eval[/] {args.config} · {len(projects)} project(s) × {args.runs} run(s) · "
+                f"{args.jobs} in parallel · model {meta['model']}")
+
+  # Separate processes, not threads: each run chdirs into its own temp repo,
+  # and the working directory is process-wide.
   rows = []
-  with out_path.open("w") as out:
-    for project in projects:
-      for run in range(1, args.runs + 1):
-        with console.status(f"{project.project} run {run}/{args.runs}…"):
-          row = evaluate(project, run, test_grader=run <= args.grader_runs)
+  with out_path.open("w") as out, ProcessPoolExecutor(max_workers=args.jobs) as pool:
+    futures = {pool.submit(evaluate, project, run, run <= args.grader_runs): (project, run) for project, run in jobs}
+    with console.status(f"0/{len(jobs)} runs done…") as status:
+      for future in as_completed(futures):
+        project, run = futures[future]
+        row = future.result()
         row.update(meta)
         out.write(json.dumps(row) + "\n")
         out.flush()
         rows.append(row)
         console.print(f"  {project.project} run {run}: " + _inline(row["metrics"]))
+        status.update(f"{len(rows)}/{len(jobs)} runs done…")
 
+  rows.sort(key=lambda r: (r["project"], r["run"]))
   print_summary(rows, title=f"{args.config}  ({out_path.name})")
 
 
@@ -166,8 +176,11 @@ def compute_metrics(labels, predicted, analysis, matches, quality, grader):
     per_criterion = {c: statistics.mean(getattr(q, c) for q in quality) for c in QUALITY_CRITERIA}
     metrics["quality"] = round(statistics.mean(per_criterion.values()), 2)
     metrics["non_leaking"] = round(per_criterion["non_leaking"], 2)
+    # reported separately (added later) so "quality" stays comparable across runs
+    centrals = [q.central for q in quality if q.central is not None]
+    metrics["central"] = round(statistics.mean(centrals), 2) if centrals else None
   else:
-    metrics["quality"] = metrics["non_leaking"] = None
+    metrics["quality"] = metrics["non_leaking"] = metrics["central"] = None
   return metrics
 
 
