@@ -11,12 +11,61 @@ from mentor.session import bold, dim, read_input, run_session, QuitSession
 
 QUESTIONS_PER_RUN = 3
 
+OVERVIEW = f"""\
+mentor — own the design decisions in code you didn't write.
+
+Finds the design decisions in your recent changes, asks you about them,
+grades your answers, and records what you understand in
+.mentor/DECISIONS.md.
+
+Usage:
+  mentor review [options]
+
+What to review (pick at most one; default is "recent changes"):
+  (no option)          on a branch: changes since it split from main
+                       on main: changes since your last review
+  --uncommitted        only changes you haven't committed yet
+  --since WHEN         since a commit (ddd39e8) or a date ("3 days ago")
+  --base BRANCH        on a branch, compare against BRANCH instead of main
+  --all                the whole repo
+  --more               continue with decisions left from the last review
+
+How to review:
+  -n NUMBER            questions to ask (default {QUESTIONS_PER_RUN})
+  -v, --verbose        show each step as it runs
+  -h, --help           show this help
+
+During a review:
+  type your answer, then Enter      h  hint      e  explain
+  s  skip this question             q  quit (progress is saved)
+
+Examples:
+  mentor review                     review what's new
+  mentor review --uncommitted       check what Claude just wrote
+  mentor review --since "2 days ago" -n 5
+  mentor review --all -v
+"""
+
+
+class FriendlyParser(argparse.ArgumentParser):
+  """argparse, but every error points at the full help screen."""
+
+  def error(self, message):
+    sys.stderr.write(f"mentor: {message}\n\nRun `mentor -h` to see every command and option.\n")
+    sys.exit(2)
+
 
 def main(argv=None):
-  parser = argparse.ArgumentParser(prog="mentor", description="Own the design decisions in code you didn't write.")
-  sub = parser.add_subparsers(dest="command", required=True)
+  argv = sys.argv[1:] if argv is None else argv
+  if not argv or argv[0] in ("-h", "--help", "help"):
+    print(OVERVIEW)
+    return
 
-  review = sub.add_parser("review", help="review recent changes (or the whole repo)")
+  parser = FriendlyParser(prog="mentor", add_help=False, allow_abbrev=False)
+  sub = parser.add_subparsers(dest="command", required=True, parser_class=FriendlyParser)
+
+  review = sub.add_parser("review", add_help=False, allow_abbrev=False)
+  review.add_argument("-h", "--help", action="store_true")
   review.add_argument("--all", action="store_true", help="review the whole repo")
   review.add_argument("--uncommitted", action="store_true", help="only uncommitted changes")
   review.add_argument("--since", metavar="REF", help="changes since a commit or date ('3 days ago')")
@@ -26,6 +75,9 @@ def main(argv=None):
   review.add_argument("-v", "--verbose", action="store_true", help="show each pipeline step")
 
   args = parser.parse_args(argv)
+  if args.help:
+    print(OVERVIEW)
+    return
 
   try:
     os.chdir(g.repo_root())
