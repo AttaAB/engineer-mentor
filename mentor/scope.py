@@ -4,6 +4,7 @@ Every run answers "which code should I ask you about?" first. See
 context.md §36.2 for the rules this implements.
 """
 
+import time
 from dataclasses import dataclass, field
 from fnmatch import fnmatch
 
@@ -104,7 +105,15 @@ def _resolve_since(since):
   if g.ref_exists(since):
     return g.git("rev-parse", since).strip()
 
-  # Not a commit — treat it as a date ("3 days ago", "2026-09-01").
+  # Not a commit — treat it as a date ("3 days ago", "2026-09-01"). git
+  # silently parses text it doesn't understand as "now", so reject that.
+  parsed = int(g.git("rev-parse", f"--since={since}").strip().split("=")[1])
+  if parsed >= time.time() - 1:
+    raise g.GitError(
+      f"couldn't understand --since {since!r}. "
+      "Use a commit hash (ddd39e8) or a date (\"3 days ago\", \"2026-09-01\")."
+    )
+
   before = g.git("rev-list", "-1", f"--before={since}", "HEAD").strip()
   return before or EMPTY_TREE
 
