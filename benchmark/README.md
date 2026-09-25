@@ -12,14 +12,23 @@ benchmark/
     labels.yaml    ground-truth decisions + sample answers (see link-shortener/)
 ```
 
-| Project | Language | Status |
-|---|---|---|
-| link-shortener | Python / FastAPI | built (hand-made, 3 planted decisions) · labels drafted, **needs your review** |
-| notes-app | TypeScript / Next.js | **to build** |
-| sync-cli | Python | **to build** |
-| webhook-api | TypeScript / Express | **to build** |
+| Project | Language | Built by | Labels |
+|---|---|---|---|
+| link-shortener | Python / FastAPI | hand-made, 3 planted decisions | 7 (3 must-find) |
+| notes-app | TypeScript / Next.js | fresh agent, prompt below | 8 (3 must-find) |
+| sync-cli | Python | fresh agent, prompt below | 8 (4 must-find) |
+| webhook-api | TypeScript / Express | fresh agent, prompt below | 9 (4 must-find) |
+
+Labels are AI-drafted and fact-checked against the code (every
+`path:line` validated); **priorities are the developer's call** — a
+project counts as verified once its `verified: true` is set.
 
 ## How to build a project
+
+The three generated projects were built by fresh Claude Code agents given
+*only* the prompt below — no knowledge of mentor, the benchmark, or the
+labels, and no design steering — which is equivalent to a user pasting
+the prompt into a new session. To add a project by hand instead:
 
 The point is to capture how AI assistants make decisions *when nobody is
 steering the design* — so build these the way a vibe coder would.

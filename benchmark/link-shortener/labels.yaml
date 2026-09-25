@@ -137,7 +137,8 @@ decisions:
         Nothing checks the URL, so anyone can create a short link under our
         domain that sends people to a phishing site or a javascript: URL.
       partial: >
-        Invalid URLs could be saved and the redirect would just fail.
+        Nothing checks the URL, so someone could shorten a link to a bad
+        website.
       wrong: >
         FastAPI validates that url is a real web address.
 

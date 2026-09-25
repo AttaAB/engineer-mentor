@@ -1,0 +1,179 @@
+# Ground-truth design decisions for the notes-app benchmark project.
+# Field meanings: see ../link-shortener/labels.yaml.
+#
+# Provenance: vibe-coded by a fresh Claude Code agent from the prompt in
+# benchmark/README.md with no knowledge of the benchmark or labels; no
+# design steering. Labels drafted by AI, priorities decided by the developer.
+
+project: notes-app
+language: typescript
+verified: false
+
+decisions:
+  - id: db-backed-sessions
+    title: Sessions are random tokens stored hashed in SQLite with a fixed 30-day expiry
+    location: lib/auth.ts:45-62
+    also_at: [lib/auth.ts:64-82, lib/db.ts:22-27]
+    category: architecture
+    priority: must-find
+    key_point: >
+      Server-side sessions (vs. a signed JWT) mean every request does a DB
+      lookup but logout truly revokes access; storing only the sha256 of the
+      token means a leaked database can't be used to hijack sessions. The
+      expiry is fixed, not sliding, so active users are logged out at day 30.
+    answers:
+      good: >
+        The cookie holds a random token and the database stores only its
+        hash, so each request looks the session up — logout deletes the row
+        and access is gone immediately, unlike a JWT, and someone who steals
+        the DB can't reuse the hashes as cookies.
+      partial: >
+        It uses a cookie to keep the user logged in for 30 days.
+      wrong: >
+        The session is a signed token, so the server doesn't need to store
+        anything and logout just clears the cookie.
+
+  - id: ownership-in-queries
+    title: Authorization is enforced by user_id in every note query
+    location: lib/notes.ts:89-94
+    also_at: [lib/notes.ts:122-149, app/notes/actions.ts:39-62]
+    category: security
+    priority: must-find
+    key_point: >
+      There is no separate permission check: every read/update/delete adds
+      `AND user_id = ?`, so a request for another user's note id simply
+      matches no rows ("not found"). Correctness depends on every future
+      query remembering that clause — one missing WHERE is a data leak.
+    answers:
+      good: >
+        Each query includes AND user_id = ?, so asking for someone else's note
+        id finds no row and returns not found; there's no central check, so
+        any new query that forgets the clause would leak other users' notes.
+      partial: >
+        It checks that you're logged in before you can edit notes.
+      wrong: >
+        Note ids are random, so nobody can guess another user's note.
+
+  - id: live-share-token
+    title: Public sharing is a random token on the note that serves its live content
+    location: lib/notes.ts:142-149
+    also_at: [lib/notes.ts:96-99, "app/s/[token]/page.tsx:9-24"]
+    category: security
+    priority: must-find
+    key_point: >
+      The link shows the note's current content, not a snapshot, so every
+      later edit is immediately public to anyone holding the link; the
+      token is the only secret (no expiry), and stopping/re-starting sharing
+      issues a new token, breaking old links.
+    answers:
+      good: >
+        The share page loads the note by token each time, so anything I add
+        after sharing — even something private — is visible to whoever has
+        the link, forever until I stop sharing; re-enabling makes a new token
+        so the old link dies.
+      partial: >
+        It makes a random link so other people can read the note.
+      wrong: >
+        The shared page is a copy made when you click share, so later edits
+        stay private.
+
+  - id: sqlite-file-deployment
+    title: Data lives in a local SQLite file opened once per server process
+    location: lib/db.ts:6-13
+    also_at: [lib/db.ts:50-57]
+    category: architecture
+    priority: nice-to-find
+    key_point: >
+      Works on one long-running server, but on serverless/multi-instance
+      hosting (e.g. Vercel) each instance has its own (often ephemeral or
+      read-only) filesystem, so users, sessions, and notes would diverge or
+      disappear.
+    answers:
+      good: >
+        Everything is in data/notes.db on the server's disk, so it only works
+        with one persistent server — on Vercel-style serverless each instance
+        gets its own temporary disk and data would vanish or differ between
+        requests.
+      partial: >
+        SQLite is fine for a small app but might not scale.
+      wrong: >
+        Next.js automatically syncs the SQLite file between instances.
+
+  - id: like-search
+    title: Search is a LIKE '%query%' scan over title, body, and tags
+    location: lib/notes.ts:60-78
+    category: performance
+    priority: nice-to-find
+    key_point: >
+      A leading wildcard can't use an index, so every search scans all of the
+      user's notes including 100KB bodies; it's substring (not word)
+      matching with no ranking. Fine now, slow as notes grow.
+    answers:
+      good: >
+        '%term%' can't use an index, so each search reads every one of the
+        user's notes and their bodies — fine for dozens, slow for thousands,
+        and results are just newest-first with no relevance.
+      partial: >
+        It searches the title, body, and tags.
+      wrong: >
+        The notes_user_idx index makes the text search fast.
+
+  - id: no-login-rate-limit
+    title: Login has no attempt limiting (bcrypt cost 10, dummy hash for timing)
+    location: app/auth-actions.ts:29-35
+    also_at: [lib/auth.ts:11-12, lib/auth.ts:37-43]
+    category: security
+    priority: nice-to-find
+    key_point: >
+      The dummy hash stops attackers learning which emails exist from
+      response timing, but nothing limits attempts, so passwords can be
+      brute-forced or sprayed; each attempt also costs a bcrypt hash of CPU.
+    answers:
+      good: >
+        Unknown emails still run a bcrypt compare so timing doesn't reveal
+        who has an account, but there's no limit on attempts, so someone can
+        keep guessing passwords, and every guess burns CPU on bcrypt.
+      partial: >
+        Passwords are hashed with bcrypt so they're safe.
+      wrong: >
+        bcrypt automatically locks the account after too many failures.
+
+  - id: forwarded-host-share-url
+    title: Share URLs are built from x-forwarded-host / host headers when APP_URL is unset
+    location: "app/notes/[id]/page.tsx:11-17"
+    category: security
+    priority: nice-to-find
+    key_point: >
+      Request headers are client-controlled unless a trusted proxy
+      overwrites them, so the displayed share link can point at an
+      attacker-chosen host; APP_URL avoids trusting headers.
+    answers:
+      good: >
+        Without APP_URL the link's host comes straight from request headers,
+        which a client or misconfigured proxy can set, so the share URL shown
+        could point to someone else's domain.
+      partial: >
+        It figures out the site's address automatically.
+      wrong: >
+        The host header always comes from the server, so it can't be wrong.
+
+  - id: bcrypt-72-byte-limit
+    title: Passwords are capped at 72 characters
+    location: app/auth-actions.ts:20-21
+    category: correctness
+    priority: nice-to-find
+    key_point: >
+      bcrypt only uses the first 72 bytes of input, so longer passwords
+      would silently be truncated (anything after byte 72 ignored); the cap
+      makes that explicit — though it counts characters, not bytes, so
+      multi-byte passwords can still exceed 72 bytes.
+    answers:
+      good: >
+        bcrypt ignores everything past 72 bytes, so without the cap two long
+        passwords sharing a prefix would both work; the check counts
+        characters, though, so emoji or accented passwords can still go over
+        72 bytes.
+      partial: >
+        Very long passwords aren't needed so it limits them.
+      wrong: >
+        The limit is there to keep the database column small.

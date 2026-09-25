@@ -1,0 +1,213 @@
+# Ground-truth design decisions for the webhook-api benchmark project.
+# Field meanings: see ../link-shortener/labels.yaml.
+#
+# Provenance: vibe-coded by a fresh Claude Code agent from the prompt in
+# benchmark/README.md with no knowledge of the benchmark or labels; no
+# design steering. Labels drafted by AI, priorities decided by the developer.
+
+project: webhook-api
+language: typescript
+verified: false
+
+decisions:
+  - id: event-id-idempotency
+    title: Duplicate webhooks are detected by event id and acknowledged with 200
+    location: src/db.ts:80-86
+    also_at: [src/db.ts:66-71, src/app.ts:114-115]
+    category: correctness
+    priority: must-find
+    key_point: >
+      Each event id is inserted once (INSERT OR IGNORE) inside a transaction
+      with the payment insert, and payments are unique by provider id, so a
+      provider resending the same event records nothing twice and still gets
+      a 200 so it stops retrying.
+    answers:
+      good: >
+        The event id is the primary key, so the second delivery's insert is
+        ignored, recordEvent returns false, and we reply 200 with
+        duplicate: true — no second payment and no second email, and the
+        provider stops retrying.
+      partial: >
+        It checks whether the event was already seen so it doesn't save it
+        twice.
+      wrong: >
+        The second delivery creates a second payment row, which is fine
+        because the list endpoint shows both.
+
+  - id: reject-invalid-with-400
+    title: Unparseable payments and payments without a customer are rejected with 400
+    location: src/app.ts:103-109
+    also_at: [src/app.ts:31-36]
+    category: reliability
+    priority: must-find
+    key_point: >
+      A non-2xx response tells the provider to retry, and the event is never
+      recorded, so a payment missing a customer (or failing the schema) is
+      retried for days and never stored — a real payment silently lost
+      rather than recorded and flagged.
+    answers:
+      good: >
+        Returning 400 makes Stripe keep retrying, but the same payload fails
+        the same way every time and the event is never recorded, so the
+        payment is never saved — we'd lose a real payment and just get
+        repeated warnings until Stripe gives up.
+      partial: >
+        The webhook fails and logs a warning, so someone would have to look
+        at the logs.
+      wrong: >
+        A 400 tells Stripe the event was received, so it just moves on.
+
+  - id: signature-over-raw-body
+    title: Hand-rolled Stripe-style HMAC check over the raw body with a 5-minute window
+    location: src/signature.ts:18-44
+    also_at: [src/app.ts:77-86]
+    category: security
+    priority: must-find
+    key_point: >
+      The HMAC must be computed over the exact raw bytes, so the route uses
+      express.raw() instead of express.json(); the timestamp window limits
+      replays (duplicates within it are caught by event-id dedupe) but
+      rejects legitimate requests if the server clock drifts.
+    answers:
+      good: >
+        The signature is an HMAC of the exact bytes Stripe sent, so parsing
+        and re-serializing JSON would change them and break verification —
+        hence express.raw(). The 5-minute timestamp window stops old requests
+        being replayed, but if our clock drifts more than that, real webhooks
+        get rejected.
+      partial: >
+        It checks the signature so fake webhooks are rejected.
+      wrong: >
+        The body is parsed as JSON first and the signature is checked
+        against the parsed object.
+
+  - id: email-outbox-at-least-once
+    title: Emails are queued in the payments table and sent by a background worker
+    location: src/email.ts:55-70
+    also_at: [src/db.ts:63-64, src/db.ts:98-111, src/app.ts:115-117]
+    category: reliability
+    priority: must-find
+    key_point: >
+      The webhook responds before any email is sent, so mail failures can't
+      fail it; delivery is at-least-once — if the process dies after the SMTP
+      send but before markEmailSent, the startup reset puts the row back to
+      pending and the customer gets the email twice.
+    answers:
+      good: >
+        The payment is saved with email_status pending and the webhook
+        returns immediately; the worker sends later and retries up to 5
+        times. If we crash after sending but before marking it sent, the
+        startup reset re-queues it, so the customer can get a duplicate
+        email — at-least-once, not exactly-once.
+      partial: >
+        Emails are sent in the background so the webhook is fast, and
+        failures are retried.
+      wrong: >
+        The email is sent before the webhook responds, so if it fails the
+        provider retries the whole webhook.
+
+  - id: single-process-worker
+    title: The email worker runs inside the web process on a 30-second timer
+    location: src/email.ts:72-88
+    also_at: [src/index.ts:15-20, src/db.ts:63-64]
+    category: architecture
+    priority: nice-to-find
+    key_point: >
+      Scaling to multiple instances would run multiple workers, and each
+      instance's startup reset of 'sending' rows could re-send emails another
+      instance is mid-way through; the SQLite file also ties the service to
+      one host.
+    answers:
+      good: >
+        Each instance starts its own worker, and when a new instance boots it
+        resets every 'sending' row to pending — including ones another
+        instance is sending right now — so customers get duplicates. It
+        assumes exactly one process.
+      partial: >
+        Running more instances would mean more workers polling the table.
+      wrong: >
+        The atomic claim query means any number of instances is completely
+        safe.
+
+  - id: insert-only-payments
+    title: Only payment_intent.succeeded is handled; later events never update a payment
+    location: src/app.ts:102-112
+    also_at: [src/db.ts:70]
+    category: correctness
+    priority: nice-to-find
+    key_point: >
+      Refunds, disputes, and failures are acknowledged and ignored, and the
+      payment insert does nothing on conflict, so a refunded payment still
+      shows as succeeded in the customer's history forever.
+    answers:
+      good: >
+        A refund arrives as a different event type, which is recorded for
+        dedupe but otherwise ignored, and payments are never updated — so the
+        list endpoint keeps showing it as succeeded.
+      partial: >
+        Other events are ignored for now.
+      wrong: >
+        The refund event updates the payment's status to refunded.
+
+  - id: metadata-customer-fallback
+    title: Customer id and email fall back to payment metadata
+    location: src/app.ts:35-41
+    category: security
+    priority: nice-to-find
+    key_point: >
+      Metadata is set by whoever creates the payment intent (possibly client
+      code), so a missing Stripe customer lets arbitrary metadata decide which
+      customer a payment is attributed to and where the email goes; the same
+      person can also end up under two ids.
+    answers:
+      good: >
+        If there's no Stripe customer, whatever is in metadata.customer_id is
+        trusted, and metadata can be set by the client creating the payment —
+        so payments could be attributed to the wrong customer and receipts
+        sent to an arbitrary email.
+      partial: >
+        It uses metadata as a backup so more payments have a customer.
+      wrong: >
+        Metadata is verified by Stripe so it's as trustworthy as the customer
+        field.
+
+  - id: shared-api-token
+    title: One shared bearer token authorizes reading any customer's payments
+    location: src/app.ts:120-126
+    also_at: [src/config.ts:23]
+    category: security
+    priority: nice-to-find
+    key_point: >
+      Any holder of API_TOKEN can list every customer's payments by changing
+      the URL; it's service-to-service auth, not per-customer authorization,
+      so it must never be exposed to a browser or customer-facing client.
+    answers:
+      good: >
+        The token isn't tied to a customer, so anyone with it can read any
+        customer's payments just by changing the id in the URL — fine for an
+        internal service, dangerous if a frontend ever calls it directly.
+      partial: >
+        It needs a token so random people can't call it.
+      wrong: >
+        Each customer gets their own token, so they can only see their own
+        payments.
+
+  - id: synchronous-sqlite
+    title: better-sqlite3 runs every query synchronously on the event loop
+    location: src/db.ts:32-35
+    category: performance
+    priority: nice-to-find
+    key_point: >
+      Each query blocks Node's single thread, so a slow query or a write
+      waiting on busy_timeout (up to 5s) stalls every in-flight request,
+      including webhook responses the provider is timing.
+    answers:
+      good: >
+        better-sqlite3 is synchronous, so while a query runs — or waits up to
+        5 seconds on a lock — Node can't handle any other request, and
+        webhooks could time out on the provider's side.
+      partial: >
+        SQLite can be slower than Postgres under load.
+      wrong: >
+        Queries run on a background thread, so they never block other
+        requests.

@@ -1,0 +1,179 @@
+# Ground-truth design decisions for the sync-cli benchmark project.
+# Field meanings: see ../link-shortener/labels.yaml.
+#
+# Provenance: vibe-coded by a fresh Claude Code agent from the prompt in
+# benchmark/README.md with no knowledge of the benchmark or labels; no
+# design steering. Labels drafted by AI, priorities decided by the developer.
+
+project: sync-cli
+language: python
+verified: false
+
+decisions:
+  - id: state-tracked-deletions
+    title: Only files recorded in .sync-state.json are ever deleted
+    location: sync_cli/sync.py:95-114
+    also_at: [sync_cli/sync.py:30-44, sync_cli/sync.py:172-185]
+    category: correctness
+    priority: must-find
+    key_point: >
+      Deletion is driven by the state file, not by what's on disk, so the
+      user's own files are safe — but if the state file is lost or corrupt
+      it's silently ignored, and files removed remotely are never deleted
+      locally again (the mirror drifts); identical pre-existing files are
+      "adopted" and become deletable.
+    answers:
+      good: >
+        It only deletes paths listed in the state file, so my own files are
+        never touched. But if .sync-state.json is deleted or corrupted, it's
+        just ignored, so anything removed on the server later stays locally
+        forever — and a pre-existing file that happens to match a remote file
+        gets adopted and can then be deleted.
+      partial: >
+        It deletes local files that aren't on the server anymore.
+      wrong: >
+        It deletes every local file that isn't in the remote listing,
+        including ones I added myself.
+
+  - id: remote-wins-overwrite
+    title: Any local file that differs from the remote copy is overwritten
+    location: sync_cli/sync.py:107-112
+    also_at: [sync_cli/sync.py:56-65]
+    category: correctness
+    priority: must-find
+    key_point: >
+      It's a one-way mirror: a local edit makes the hash differ, so the next
+      cycle silently replaces it with the remote version — local changes are
+      lost with no backup or warning. The size+mtime cache also means an edit
+      that keeps both unchanged isn't noticed at all.
+    answers:
+      good: >
+        If I edit a synced file, its hash no longer matches the manifest, so
+        the next run re-downloads and replaces it — my edit is gone without a
+        warning. It's a mirror, not two-way sync.
+      partial: >
+        It re-downloads files when they change.
+      wrong: >
+        It detects local edits and uploads them to the server.
+
+  - id: atomic-verified-download
+    title: Downloads go to a .sync-part file, are verified, then atomically replaced
+    location: sync_cli/sync.py:152-170
+    also_at: [sync_cli/remote.py:131-153]
+    category: reliability
+    priority: must-find
+    key_point: >
+      Bytes are written to a temp file, checked against the manifest's size
+      and sha256, and only then os.replace()d over the real file, so a crash,
+      Ctrl+C, or truncated transfer never leaves a half-written file where a
+      good one was.
+    answers:
+      good: >
+        It writes to file.sync-part, checks the size and sha256, and only then
+        renames it over the real file in one atomic step — if the connection
+        drops or I kill it halfway, the old good file is still there.
+      partial: >
+        It checks the hash so corrupted downloads are detected.
+      wrong: >
+        It writes straight into the destination file, so a failed download
+        just leaves a partial file until next time.
+
+  - id: retry-policy
+    title: Every request retries with exponential backoff and full jitter, restarting from zero
+    location: sync_cli/remote.py:41-75
+    category: reliability
+    priority: must-find
+    key_point: >
+      Up to 5 attempts with randomized, growing waits spread retries out,
+      but each retry re-downloads the whole file (no resume), so large files
+      on a flaky link may never finish; OSError is treated as retryable, so
+      local problems like a full disk are retried pointlessly too.
+    answers:
+      good: >
+        Failures back off randomly up to 30s so clients don't retry in sync,
+        but each attempt starts the file from byte zero, so a big file on a
+        bad connection can fail every time. And because any OSError counts,
+        even "disk full" gets retried five times.
+      partial: >
+        It retries failed requests a few times before giving up.
+      wrong: >
+        It resumes interrupted downloads from where they stopped.
+
+  - id: empty-manifest-guard
+    title: Deletions are skipped only when the remote manifest is completely empty
+    location: sync_cli/sync.py:137-141
+    category: reliability
+    priority: nice-to-find
+    key_point: >
+      The guard protects against a server returning nothing, but a partial
+      or truncated listing (e.g. half the files) still deletes everything
+      missing from it — the guard is all-or-nothing.
+    answers:
+      good: >
+        It only protects against an empty list. If the server returns a
+        partial manifest, every file missing from it is deleted locally.
+      partial: >
+        It won't delete files if the server returns nothing.
+      wrong: >
+        It never deletes files unless --allow-empty is passed.
+
+  - id: manifest-url-override
+    title: A manifest entry's own `url` is downloaded instead of the server path
+    location: sync_cli/remote.py:127
+    also_at: [sync_cli/remote.py:95-97]
+    category: security
+    priority: nice-to-find
+    key_point: >
+      The server fully controls where the client fetches from; urllib also
+      accepts file:// URLs, so a malicious or compromised manifest could copy
+      local files (e.g. file:///etc/passwd, with a matching hash) into the
+      mirror or make the client hit internal hosts.
+    answers:
+      good: >
+        Whatever url the manifest gives is fetched, so the server can send us
+        to any host — and since urllib supports file://, a hostile manifest
+        could make us copy local files into the folder or hit internal
+        addresses.
+      partial: >
+        Files can be hosted somewhere other than the main server.
+      wrong: >
+        The url field is ignored; files always come from /files/.
+
+  - id: state-save-per-file
+    title: The whole state file is rewritten after every successful download
+    location: sync_cli/sync.py:161-162
+    also_at: [sync_cli/sync.py:46-50]
+    category: performance
+    priority: nice-to-find
+    key_point: >
+      Saving after each file makes progress crash-safe (a restart doesn't
+      re-download finished files), but rewriting the full JSON each time is
+      O(n²) work for a large first sync.
+    answers:
+      good: >
+        Writing the state after each file means a crash keeps the progress,
+        but it rewrites the entire JSON every time, so syncing thousands of
+        files spends more and more time just saving state.
+      partial: >
+        It saves progress as it goes.
+      wrong: >
+        State is only saved at the end of the sync.
+
+  - id: flock-in-dest
+    title: A POSIX flock on a file in the destination prevents concurrent runs
+    location: sync_cli/cli.py:44-53
+    category: architecture
+    priority: nice-to-find
+    key_point: >
+      fcntl makes the tool Unix-only, and flock is unreliable on some
+      network filesystems (NFS/SMB), where two machines syncing the same
+      shared folder could both get the lock.
+    answers:
+      good: >
+        It uses fcntl.flock, so it won't run on Windows, and on a network
+        drive the lock may not be honored across machines, so two syncs
+        could write the same folder.
+      partial: >
+        The lock stops two copies running at the same time.
+      wrong: >
+        The lock works on every OS and filesystem.

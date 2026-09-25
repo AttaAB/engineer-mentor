@@ -1,0 +1,27 @@
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: #f6f6f4;
+  color: #1d1d1b;
+  line-height: 1.5;
+}
+a { color: #2456c7; }
+.container { max-width: 760px; margin: 0 auto; padding: 24px 16px; }
+.header { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+.header h1 { margin: 0; font-size: 1.4rem; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.card { background: #fff; border: 1px solid #e2e2de; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+.card h2 { margin: 0 0 4px; font-size: 1.1rem; }
+.muted { color: #6b6b66; font-size: 0.875rem; }
+.error { color: #b3261e; font-size: 0.9rem; }
+.tag { display: inline-block; background: #eef2fb; color: #2456c7; border-radius: 999px; padding: 1px 10px; font-size: 0.8rem; text-decoration: none; margin-right: 4px; }
+form.stack { display: flex; flex-direction: column; gap: 12px; }
+label { display: flex; flex-direction: column; gap: 4px; font-size: 0.9rem; }
+input, textarea { font: inherit; padding: 8px 10px; border: 1px solid #cfcfca; border-radius: 6px; background: #fff; }
+textarea { min-height: 240px; resize: vertical; }
+button, .button { font: inherit; padding: 8px 14px; border-radius: 6px; border: 1px solid #2456c7; background: #2456c7; color: #fff; cursor: pointer; text-decoration: none; display: inline-block; }
+button.secondary, .button.secondary { background: #fff; color: #2456c7; }
+button.danger { background: #fff; color: #b3261e; border-color: #b3261e; }
+.auth { max-width: 380px; margin: 60px auto; }
+.note-body { white-space: pre-wrap; word-wrap: break-word; }
