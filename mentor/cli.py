@@ -6,9 +6,10 @@ from pathlib import Path
 from mentor import git as g
 from mentor.context import build_context
 from mentor.llm import MissingAPIKey, ensure_api_key, extract_decisions
-from mentor.record import DECISIONS_FILE, load_state, owned_titles, pending_decisions, save_state
+from mentor import ui
+from mentor.record import DECISIONS_FILE, load_state, owned_titles, ownership, pending_decisions, save_state
 from mentor.scope import resolve_scope
-from mentor.session import bold, dim, read_input, run_session, QuitSession
+from mentor.session import QuitSession, read_input, run_session
 from mentor.verify import filter_decisions
 
 QUESTIONS_PER_RUN = 3
@@ -110,41 +111,37 @@ def review_scope(args):
     return
 
   if scope.is_empty:
-    print(f"Nothing to review ({scope.label}).")
+    ui.info(f"Nothing to review ({scope.label}).")
     return
 
-  step(args, "scope", f"{scope.label} · {len(scope.files) + len(scope.untracked)} files · {scope.stats}")
+  ui.step(args.verbose, "scope", f"{scope.label} · {len(scope.files) + len(scope.untracked)} files · {scope.stats}")
 
   if not any(looks_like_code(path) for path in scope.files + scope.untracked):
-    print(dim("  note: only config/docs changed, so decisions may be shallow. `mentor review --all` looks at everything."))
+    ui.note("Only config/docs changed, so decisions may be shallow. `mentor review --all` looks at everything.")
 
   context = build_context(scope)
   source = "whole files" if scope.kind == "all" else "diff only"
-  step(args, "context", f"{source} · {len(context.text):,} chars")
+  ui.step(args.verbose, "context", f"{source} · {len(context.text):,} chars")
   if context.truncated:
-    print(dim("  note: change is large; context was truncated. Try a narrower range (--since / --uncommitted)."))
+    ui.note("This change is large, so some files were left out. Try a narrower range (--since / --uncommitted).")
 
-  print(dim("Analyzing design decisions..."))
-  found = extract_decisions(context.text, scope.label, owned_titles=owned_titles(state))
+  with ui.working(f"Reading {scope.label} and finding design decisions…"):
+    found = extract_decisions(context.text, scope.label, owned_titles=owned_titles(state))
   decisions, dropped = filter_decisions(found, context.visible_lines)
-  step(args, "decisions", f"{len(found)} found · {len(dropped)} dropped · ranked")
+  ui.step(args.verbose, "decisions", f"{len(found)} found · {len(dropped)} dropped · ranked")
   for decision, reason in dropped:
-    step(args, "", f"  dropped “{decision.title}” — {reason}")
+    ui.step(args.verbose, "", f"  dropped “{decision.title}” — {reason}")
 
   state["last_reviewed_commit"] = g.head_commit()
 
   if not decisions:
     state["pending"] = []
     save_state(state)
-    print("No design decisions worth asking about in this change.")
+    ui.info("No design decisions worth asking about in this change.")
     return
 
   asked = decisions[:args.n]
-  print()
-  print(f"Found {len(decisions)} design decision(s) in {scope.label}.")
-  if len(decisions) > len(asked):
-    print(f"These {len(asked)} are the ones you'd most likely be asked to explain:")
-
+  ui.found(len(decisions), len(asked), scope.label)
   finish(state, asked, decisions[args.n:], scope.label)
 
 
@@ -152,50 +149,36 @@ def review_pending(args):
   state = load_state()
   pending = pending_decisions(state)
   if not pending:
-    print("Nothing left over from the last review. Run `mentor review` for new changes.")
+    ui.info("Nothing left over from the last review. Run `mentor review` for new changes.")
     return
 
-  print(f"{len(pending)} decision(s) left from the last review.")
+  ui.info(f"{len(pending)} decision(s) left from the last review.")
   finish(state, pending[:args.n], pending[args.n:], "continued review")
 
 
 def finish(state, asked, remaining, scope_label):
+  state["pending"] = [d.model_dump() for d in asked + remaining]
+  before = ownership(state)
+
   tally, requeue = run_session(asked, state, scope_label)
   # skipped/unreached go after the untouched remainder so --more shows new ones first
   state["pending"] = [d.model_dump() for d in remaining + requeue]
   save_state(state)
 
-  left = len(state["pending"])
-  print()
-  print(dim("═" * 64))
-  summary = f"  Owned {tally['owned']} · Partial {tally['partial']} · To revisit {tally['revisit']}"
-  if tally["skipped"]:
-    summary += f" · Skipped {tally['skipped']}"
-  print(bold(summary))
-  if left:
-    print(dim(f"  {left} more decision(s) — run `mentor review --more`"))
-  print(dim(f"  Decision record → {DECISIONS_FILE}"))
+  ui.end_card(tally, before, ownership(state), len(state["pending"]), DECISIONS_FILE)
 
 
 def ask_choice(prompt, options):
-  print(prompt)
-  for number, (_, label) in enumerate(options, start=1):
-    print(f"  [{number}] {label}")
-
+  ui.choice_menu(prompt, options)
   while True:
-    choice = read_input("> ") or "1"
+    choice = read_input() or "1"
     if choice.isdigit() and 1 <= int(choice) <= len(options):
       return options[int(choice) - 1][0]
-    print(f"Pick 1–{len(options)}.")
+    ui.note(f"Pick 1–{len(options)}.")
 
 
 def looks_like_code(path):
   return Path(path).suffix.lower() not in NON_CODE_SUFFIXES and Path(path).name not in NON_CODE_NAMES
-
-
-def step(args, name, detail):
-  if args.verbose:
-    print(dim(f"▸ {name:<10} {detail}"))
 
 
 if __name__ == "__main__":

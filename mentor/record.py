@@ -48,6 +48,18 @@ def owned_titles(state):
   return [entry["decision"]["title"] for entry in state["decisions"].values() if entry["status"] == "owned"]
 
 
+def ownership(state):
+  """(owned, known) across every decision mentor has found in this repo.
+
+  "Known" includes decisions still waiting in the queue, so skipping or
+  quitting never inflates the score.
+  """
+  reviewed = state["decisions"]
+  queued = {d["id"] for d in state.get("pending", [])} - reviewed.keys()
+  owned = sum(1 for entry in reviewed.values() if entry["status"] == "owned")
+  return owned, len(reviewed) + len(queued)
+
+
 def pending_decisions(state):
   return [Decision(**d) for d in state.get("pending", [])]
 
