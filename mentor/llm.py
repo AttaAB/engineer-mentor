@@ -1,13 +1,34 @@
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv
 from openai import OpenAI
 
 from mentor.models import DecisionSet, Grade
 
-load_dotenv()
+USER_ENV_FILE = Path.home() / ".config" / "mentor" / ".env"
+DEV_ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
+
+# Key lookup order: real environment (never overridden) → user config →
+# this project's own .env (development). The reviewed repo's .env is
+# deliberately not read: it belongs to the user's app, not to mentor.
+load_dotenv(USER_ENV_FILE)
+load_dotenv(DEV_ENV_FILE)
 
 DEFAULT_MODEL = "gpt-5.6-luna"
+
+
+class MissingAPIKey(Exception):
+  pass
+
+
+def ensure_api_key():
+  if not os.environ.get("OPENAI_API_KEY"):
+    raise MissingAPIKey(
+      "No OpenAI API key found. Set one with either:\n"
+      "  export OPENAI_API_KEY=sk-...\n"
+      f"  or put OPENAI_API_KEY=sk-... in {USER_ENV_FILE}"
+    )
 
 _client = None
 
