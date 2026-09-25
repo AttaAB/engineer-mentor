@@ -114,7 +114,8 @@ def evaluate(project, run, test_grader):
     "predicted": [
       {"rank": i + 1, "id": d.id, "title": d.title, "location": d.location, "category": d.category,
        "confidence": d.confidence, "question": d.question,
-       "label": m.label_id, "real": m.is_real_decision, "judge_reason": m.reason}
+       "label": m.label_id, "real": m.is_real_decision, "judge_reason": m.reason,
+       "decision": d.model_dump()}  # full answer key, so the grader can be replayed offline
       for i, (d, m) in enumerate(zip(predicted, matches))
     ],
     "dropped": [{"title": d.title, "location": d.location, "reason": r} for d, r in analysis.dropped],
