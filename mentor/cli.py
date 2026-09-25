@@ -1,15 +1,23 @@
 import argparse
 import os
 import sys
+from pathlib import Path
 
 from mentor import git as g
 from mentor.context import build_context
-from mentor.llm import extract_decisions
+from mentor.llm import MissingAPIKey, ensure_api_key, extract_decisions
 from mentor.record import DECISIONS_FILE, load_state, owned_titles, pending_decisions, save_state
 from mentor.scope import resolve_scope
 from mentor.session import bold, dim, read_input, run_session, QuitSession
+from mentor.verify import filter_decisions
 
 QUESTIONS_PER_RUN = 3
+
+NON_CODE_SUFFIXES = {
+  ".md", ".txt", ".rst", ".json", ".yaml", ".yml", ".toml", ".ini", ".cfg",
+  ".csv", ".lock", ".svg", ".png", ".jpg", ".gif", ".ico",
+}
+NON_CODE_NAMES = {".gitignore", ".env.example", "LICENSE", "requirements.txt"}
 
 OVERVIEW = f"""\
 mentor — own the design decisions in code you didn't write.
@@ -85,11 +93,12 @@ def main(argv=None):
     sys.exit("mentor: not inside a git repository.")
 
   try:
+    ensure_api_key()
     if args.more:
       review_pending(args)
     else:
       review_scope(args)
-  except g.GitError as error:
+  except (g.GitError, MissingAPIKey) as error:
     sys.exit(f"mentor: {error}")
 
 
@@ -106,14 +115,21 @@ def review_scope(args):
 
   step(args, "scope", f"{scope.label} · {len(scope.files) + len(scope.untracked)} files · {scope.stats}")
 
-  context, truncated = build_context(scope)
-  step(args, "context", f"diff only · {len(context):,} chars")
-  if truncated:
+  if not any(looks_like_code(path) for path in scope.files + scope.untracked):
+    print(dim("  note: only config/docs changed, so decisions may be shallow. `mentor review --all` looks at everything."))
+
+  context = build_context(scope)
+  source = "whole files" if scope.kind == "all" else "diff only"
+  step(args, "context", f"{source} · {len(context.text):,} chars")
+  if context.truncated:
     print(dim("  note: change is large; context was truncated. Try a narrower range (--since / --uncommitted)."))
 
   print(dim("Analyzing design decisions..."))
-  decisions = extract_decisions(context, scope.label, owned_titles=owned_titles(state))
-  step(args, "decisions", f"{len(decisions)} found · ranked")
+  found = extract_decisions(context.text, scope.label, owned_titles=owned_titles(state))
+  decisions, dropped = filter_decisions(found, context.visible_lines)
+  step(args, "decisions", f"{len(found)} found · {len(dropped)} dropped · ranked")
+  for decision, reason in dropped:
+    step(args, "", f"  dropped “{decision.title}” — {reason}")
 
   state["last_reviewed_commit"] = g.head_commit()
 
@@ -144,8 +160,9 @@ def review_pending(args):
 
 
 def finish(state, asked, remaining, scope_label):
-  tally, unasked = run_session(asked, state, scope_label)
-  state["pending"] = [d.model_dump() for d in unasked + remaining]
+  tally, requeue = run_session(asked, state, scope_label)
+  # skipped/unreached go after the untouched remainder so --more shows new ones first
+  state["pending"] = [d.model_dump() for d in remaining + requeue]
   save_state(state)
 
   left = len(state["pending"])
@@ -170,6 +187,10 @@ def ask_choice(prompt, options):
     if choice.isdigit() and 1 <= int(choice) <= len(options):
       return options[int(choice) - 1][0]
     print(f"Pick 1–{len(options)}.")
+
+
+def looks_like_code(path):
+  return Path(path).suffix.lower() not in NON_CODE_SUFFIXES and Path(path).name not in NON_CODE_NAMES
 
 
 def step(args, name, detail):

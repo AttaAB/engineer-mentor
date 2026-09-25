@@ -43,20 +43,27 @@ def read_input(prompt="> "):
 
 
 def run_session(decisions, state, scope_label):
-  """Ask about each decision in turn. Returns (tally, unasked_decisions)."""
+  """Ask about each decision in turn.
+
+  Returns (tally, requeue): decisions to offer again via --more — the ones
+  not reached because the user quit, followed by the ones they skipped.
+  """
   tally = {"owned": 0, "partial": 0, "revisit": 0, "skipped": 0}
+  skipped = []
 
   for index, decision in enumerate(decisions):
     try:
       status, answer = ask_decision(decision, index + 1, len(decisions))
     except QuitSession:
       print(dim("\nStopping here — progress saved. Run `mentor review --more` to continue."))
-      return tally, decisions[index:]
+      return tally, decisions[index:] + skipped
 
     record_result(state, decision, status, answer, scope_label)
     tally[status] += 1
+    if status == "skipped":
+      skipped.append(decision)
 
-  return tally, []
+  return tally, skipped
 
 
 def ask_decision(decision, number, total):
