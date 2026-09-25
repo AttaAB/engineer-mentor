@@ -16,7 +16,7 @@ class Analysis:
   decisions: list                 # verified, ranked, most important first
   dropped: list                   # (decision, reason) removed by verify
   found: list                     # everything the model returned, pre-verify
-  context_chars: int
+  context_text: str               # exactly what the model read
   truncated: bool
   context_source: str             # "diff only" / "whole files"
 
@@ -30,7 +30,7 @@ def analyze(scope, owned_titles=()):
     decisions=decisions,
     dropped=dropped,
     found=found,
-    context_chars=len(context.text),
+    context_text=context.text,
     truncated=context.truncated,
     context_source="whole files" if scope.kind == "all" else "diff only",
   )

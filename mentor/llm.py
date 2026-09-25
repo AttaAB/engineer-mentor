@@ -40,8 +40,14 @@ def _get_client():
   return _client
 
 
-def _model():
+def model_name():
   return os.environ.get("MENTOR_MODEL", DEFAULT_MODEL)
+
+
+def parse(prompt, schema, model=None):
+  """One structured-output call: returns an instance of `schema`."""
+  response = _get_client().responses.parse(model=model or model_name(), input=prompt, text_format=schema)
+  return response.output_parsed
 
 
 EXTRACT_PROMPT = """\
@@ -140,8 +146,7 @@ def extract_decisions(context, scope_label, max_decisions=7, owned_titles=()):
     scope_label=scope_label,
     context=context,
   )
-  response = _get_client().responses.parse(model=_model(), input=prompt, text_format=DecisionSet)
-  return response.output_parsed.decisions
+  return parse(prompt, DecisionSet).decisions
 
 
 def grade_answer(decision, answer, attempt=1):
@@ -155,5 +160,4 @@ def grade_answer(decision, answer, attempt=1):
     attempt_note=f" (attempt {attempt})" if attempt > 1 else "",
     answer=answer,
   )
-  response = _get_client().responses.parse(model=_model(), input=prompt, text_format=Grade)
-  return response.output_parsed
+  return parse(prompt, Grade)

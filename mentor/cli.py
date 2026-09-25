@@ -122,7 +122,7 @@ def review_scope(args):
     analysis = analyze(scope, owned_titles=owned_titles(state))
   decisions = analysis.decisions
 
-  ui.step(args.verbose, "context", f"{analysis.context_source} · {analysis.context_chars:,} chars")
+  ui.step(args.verbose, "context", f"{analysis.context_source} · {len(analysis.context_text):,} chars")
   if analysis.truncated:
     ui.note("This change is large, so some files were left out. Try a narrower range (--since / --uncommitted).")
   ui.step(args.verbose, "decisions", f"{len(analysis.found)} found · {len(analysis.dropped)} dropped · ranked")
