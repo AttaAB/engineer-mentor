@@ -16,6 +16,8 @@ load_dotenv(USER_ENV_FILE)
 load_dotenv(DEV_ENV_FILE)
 
 DEFAULT_MODEL = "gpt-5.6-luna"
+REQUEST_TIMEOUT_SECONDS = 300
+MAX_DECISIONS = 12
 
 
 class MissingAPIKey(Exception):
@@ -36,7 +38,8 @@ _client = None
 def _get_client():
   global _client
   if _client is None:
-    _client = OpenAI()
+    # A stuck request once stalled an eval run for 40+ minutes; fail fast and retry.
+    _client = OpenAI(timeout=REQUEST_TIMEOUT_SECONDS, max_retries=2)
   return _client
 
 
@@ -59,26 +62,36 @@ an API contract. The developer will be asked to explain these decisions in
 code reviews, incidents, and handoffs.
 
 Your job:
-1. Identify the implicit design decisions embedded in the code below.
+1. Take an inventory of the design decisions embedded in the code below.
+   Go through it file by file so nothing load-bearing is skipped.
 2. For each, build an answer key FIRST — what was chosen, realistic
    alternatives, concrete consequences, and path:line evidence — then write
    a question that makes the developer derive those consequences.
-3. Rank decisions by how much it matters that the developer understands
-   them: correctness > reliability > security > architecture > performance
-   > maintainability, weighted by real-world impact.
+3. Rank decisions by how much it would hurt if the developer did NOT
+   understand them — in a review, an incident, or when changing the code
+   later. Weigh correctness, reliability, and security above architecture,
+   performance, and maintainability, adjusted for real-world impact.
 
-What counts as a decision:
-- a choice with realistic alternatives and consequences someone could be
-  asked to defend ("why a dict and not Redis?", "why retry 3 times?")
-- NOT style, naming, formatting, or trivia
-- NOT something the code itself makes obvious and consequence-free
+What counts as a decision — include BOTH kinds:
+- Risks and trade-offs: choices with a downside someone could be asked to
+  defend ("why a dict and not Redis?", "why retry 3 times?").
+- Safeguards the code depends on: things done deliberately and correctly
+  that a developer could easily break without realising why they exist
+  (e.g. escaping user content before rendering it as HTML, holding a lock
+  around a read-modify-write, bounding a cache so it can't grow forever).
+  Owning code means understanding these too; for them, the consequences
+  are what breaks if the safeguard is removed or bypassed.
+- Gaps: cases the code's purpose implies it should handle but it doesn't,
+  or error paths whose effect on data or users is easy to overlook.
+- NOT style, naming, formatting, or trivia.
+- NOT something the code itself makes obvious and consequence-free.
 
 Rules for evidence and grounding:
 - Line numbers in the context are the numbers at the start of each line;
   cite them as path:line or path:start-end.
 - Every consequence must follow from code you can see. If something is
-  missing from the context (e.g. you cannot see whether a DB constraint
-  exists), frame it as an assumption to question, and lower confidence.
+  missing from the context (e.g. you cannot see how a config value is set
+  in production), frame it as an assumption to question, and lower confidence.
 - Do not invent files, functions, or behaviour.
 
 Rules for questions:
@@ -91,8 +104,10 @@ Rules for questions:
   giving the answer.
 
 {already_owned}
-Return between 0 and {max_decisions} decisions. Fewer strong decisions beat
-many weak ones; return an empty list if nothing is worth asking about.
+Return up to {max_decisions} decisions, ranked. Only the top few are asked
+immediately and the rest are kept for later, so be thorough rather than
+terse — but every decision must be real and consequential. Return an
+empty list if nothing is worth asking about.
 
 Scope: {scope_label}
 
@@ -130,7 +145,7 @@ Feedback rules:
 """
 
 
-def extract_decisions(context, scope_label, max_decisions=7, owned_titles=()):
+def extract_decisions(context, scope_label, max_decisions=MAX_DECISIONS, owned_titles=()):
   already_owned = ""
   if owned_titles:
     listed = "\n".join(f"- {t}" for t in owned_titles)
