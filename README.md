@@ -60,3 +60,27 @@ and `file:line` evidence — is built before the question is written, which
 keeps questions grounded and makes answers gradable.
 
 Set `MENTOR_MODEL` to override the default model.
+
+## Evaluation
+
+`benchmark/` holds small projects with hand-verified labels of the design
+decisions they contain (see `benchmark/README.md`). The eval runs the same
+pipeline users get and scores it:
+
+```bash
+.venv/bin/pip install -e ".[eval]"
+python -m evals.run                         # all projects × 3 runs → evals/results/
+python -m evals.run --config my-change      # name a variant
+python -m evals.compare baseline my-change  # side-by-side with deltas
+```
+
+| Metric | Meaning |
+|---|---|
+| Must@3 | share of must-find decisions that made the top 3 questions |
+| Recall | share of labelled decisions found at all |
+| Precision | share of kept decisions that are real (label match or judge-confirmed) |
+| Quality / No-leak | LLM-judge scores (1–5) for question quality and not giving the answer away |
+| Grader | share of sample answers the grader grades as labelled |
+| Dropped | share of decisions removed by the citation check |
+
+Set `MENTOR_JUDGE_MODEL` to judge with a different model than the mentor.
