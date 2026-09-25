@@ -38,6 +38,7 @@ class QualityScore(BaseModel):
   non_leaking: int = Field(description="1-5: setup and question do not reveal the consequence or fix")
   specific: int = Field(description="1-5: concrete scenario tied to this code, not generic advice")
   answerable: int = Field(description="1-5: a developer could answer in a few sentences from the code")
+  central: int | None = Field(description="1-5: targets the decision's most important consequence, not an edge case or contrived setup")
   note: str = Field(description="one sentence on the biggest weakness, or 'none'")
 
 
@@ -81,6 +82,10 @@ Score each question 1-5 on each criterion (5 = excellent):
   or the fix (a question that says "given the race condition..." leaks)
 - specific: a concrete scenario tied to this code, not generic advice
 - answerable: a developer could answer in a few sentences by reading the code
+- central: the scenario targets the decision's most important consequence
+  (what a reviewer would expect the developer to know), not a niche edge
+  case or a contrived setup that only an expert in this exact code would
+  think of
 
 Be strict: 3 is acceptable, 5 is rare.
 
