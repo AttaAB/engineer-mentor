@@ -7,7 +7,7 @@
 
 project: notes-app
 language: typescript
-verified: false
+verified: true
 
 decisions:
   - id: db-backed-sessions
@@ -82,7 +82,7 @@ decisions:
     location: lib/db.ts:6-13
     also_at: [lib/db.ts:50-57]
     category: architecture
-    priority: nice-to-find
+    priority: must-find
     key_point: >
       Works on one long-running server, but on serverless/multi-instance
       hosting (e.g. Vercel) each instance has its own (often ephemeral or

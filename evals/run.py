@@ -36,6 +36,7 @@ QUALITY_CRITERIA = ["grounded", "important", "non_leaking", "specific", "answera
 # metric → (column header, format) in display order
 METRICS = {
   "recall_must_at_k": (f"Must@{TOP_K}", "pct"),
+  "recall_must": ("Must(any)", "pct"),
   "recall_all": ("Recall", "pct"),
   "precision": ("Precision", "pct"),
   "quality": ("Quality/5", "num"),
@@ -152,7 +153,9 @@ def compute_metrics(labels, predicted, analysis, matches, quality, grader):
     "labels": len(labels),
     "found": len(analysis.found),
     "kept": len(predicted),
-    "recall_must_at_k": _ratio(len(must & matched_top), len(must)),
+    # normalised by min(k, |must|) so a perfect top-k scores 100% even with >k must-finds
+    "recall_must_at_k": _ratio(len(must & matched_top), min(TOP_K, len(must))),
+    "recall_must": _ratio(len(must & matched_all), len(must)),
     "recall_all": _ratio(len(matched_all), len(labels)),
     "precision": _ratio(sum(m.is_real_decision for m in matches), len(matches)),
     "drop_rate": _ratio(len(analysis.dropped), len(analysis.found)),

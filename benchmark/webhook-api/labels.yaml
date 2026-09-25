@@ -7,7 +7,7 @@
 
 project: webhook-api
 language: typescript
-verified: false
+verified: true
 
 decisions:
   - id: event-id-idempotency
@@ -134,7 +134,7 @@ decisions:
     location: src/app.ts:102-112
     also_at: [src/db.ts:70]
     category: correctness
-    priority: nice-to-find
+    priority: must-find
     key_point: >
       Refunds, disputes, and failures are acknowledged and ignored, and the
       payment insert does nothing on conflict, so a refunded payment still

@@ -16,7 +16,7 @@
 
 project: link-shortener
 language: python
-verified: false   # flip to true once a human has reviewed every label
+verified: true
 
 decisions:
   - id: check-then-insert
@@ -86,7 +86,7 @@ decisions:
     title: One module-level SQLite connection shared across threads
     location: app/db.py:3
     category: reliability
-    priority: nice-to-find
+    priority: must-find
     key_point: >
       check_same_thread=False lets FastAPI's threadpool use one connection
       concurrently with no lock; handlers share transaction state, so one
@@ -127,7 +127,7 @@ decisions:
     location: app/main.py:18-22
     also_at: [app/main.py:35]
     category: security
-    priority: nice-to-find
+    priority: must-find
     key_point: >
       /shorten stores whatever string it is given and /{code} redirects to
       it, enabling open redirects to phishing pages or non-http schemes

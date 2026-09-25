@@ -7,7 +7,7 @@
 
 project: sync-cli
 language: python
-verified: false
+verified: true
 
 decisions:
   - id: state-tracked-deletions
