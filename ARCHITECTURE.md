@@ -53,8 +53,9 @@ mentor review
 Metrics: **Must@3** (are the 3 questions asked the must-know decisions?),
 **Must(any)** / **Recall** (were decisions found at all?), **Precision**
 (are they real?), **Grader** (does grading match the labelled answers?),
-plus AI-judge quality scores, which are **not yet trustworthy** (they
-rate almost everything ~4.9/5; `rate.py` exists to calibrate them).
+plus AI-judge quality scores, which are **reference only**: calibrated
+against 20 human ratings they did no better than chance, so question
+quality is checked with human ratings (`evals/rate.py`) instead.
 
 ## Design decisions (and why)
 
