@@ -131,11 +131,21 @@ Question asked: {question}
 Developer's answer{attempt_note}:
 {answer}
 
-Grade the answer:
-- "owned": they identified the core consequence or trade-off, even if
-  informally worded or missing secondary details.
-- "partial": they are on the right track but missed the central point.
-- "missing": wrong, irrelevant, or "I don't know".
+The reference answer is ONE good answer, not the only one. Grade what the
+developer demonstrates about the question asked:
+
+- "owned": they correctly explain what happens in the question's scenario
+  and why — naming a central consequence or trade-off. It may be any of
+  the listed consequences, or another one that is correct and central to
+  the question. Informal wording and missing secondary details are fine.
+- "partial": what they say is correct but stays surface-level — it
+  restates what the code does, or gestures at a problem without saying
+  what actually happens or why.
+- "missing": any central claim is factually wrong about this code (even
+  if other parts are right), the answer is off-topic, or they don't know.
+
+Judge against the code's actual behaviour: an answer that sounds
+plausible but contradicts the code is "missing", not "partial".
 
 Feedback rules:
 - Speak directly to the developer ("you"), 1–3 sentences.
