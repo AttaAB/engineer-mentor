@@ -1,0 +1,162 @@
+# Ground-truth design decisions for the link-shortener benchmark project.
+#
+# priority:
+#   must-find    — a developer who owns this code must be able to explain it;
+#                  the mentor should put it in its top questions
+#   nice-to-find — real and worth asking about, but secondary
+#
+# answers: sample developer answers used to measure the grader
+#   good    → should grade "owned"
+#   partial → should grade "partial"
+#   wrong   → should grade "missing"
+#
+# Provenance: hand-built with three planted decisions (check-then-insert,
+# in-memory rate limit, synchronous click write); the rest occurred
+# naturally. Labels drafted by AI, verified by the developer.
+
+project: link-shortener
+language: python
+verified: false   # flip to true once a human has reviewed every label
+
+decisions:
+  - id: check-then-insert
+    title: Short-code uniqueness relies on a SELECT before INSERT
+    location: app/links.py:14-24
+    also_at: [app/db.py:4]
+    category: correctness
+    priority: must-find
+    key_point: >
+      The existence check and the insert are separate, non-atomic steps and
+      links.code has no UNIQUE constraint, so two concurrent requests can
+      insert the same code; later lookups return an arbitrary one.
+    answers:
+      good: >
+        Both requests can run the SELECT before either INSERTs, so both think
+        the code is free and both insert it. Nothing in the schema stops the
+        duplicate, so resolving that code later could return either URL.
+      partial: >
+        If two requests pick the same code at the same time there could be a
+        problem with duplicates, but the loop should mostly handle it.
+      wrong: >
+        The while loop checks the database first, so a duplicate code can
+        never be saved.
+
+  - id: in-memory-rate-limit
+    title: Rate-limit counters live in a per-process dict
+    location: app/ratelimit.py:6-16
+    category: reliability
+    priority: must-find
+    key_point: >
+      Each worker process has its own _requests dict, so the effective limit
+      is multiplied by the number of workers and resets on restart; the dict
+      also grows without bound because stale IPs are never evicted.
+    answers:
+      good: >
+        Each worker process has its own copy of _requests, so with 4 workers
+        a client can get up to about 40 requests a minute, and every restart
+        wipes the counts.
+      partial: >
+        It's stored in memory so it resets when the server restarts.
+      wrong: >
+        The dict is shared by all requests, so the limit is exactly 10 per
+        minute no matter how it's deployed.
+
+  - id: sync-click-write
+    title: Click analytics are written synchronously before redirecting
+    location: app/main.py:25-35
+    category: performance
+    priority: must-find
+    key_point: >
+      Every redirect waits on a database INSERT + commit before responding,
+      so analytics latency or DB errors/locks directly slow down or break
+      the core redirect path.
+    answers:
+      good: >
+        The redirect doesn't return until the click INSERT and commit finish,
+        so slow or locked writes make every redirect slower, and if the write
+        fails the user gets an error instead of being redirected.
+      partial: >
+        It records every click in the database, which adds some work to each
+        request.
+      wrong: >
+        The click is logged after the redirect is sent, so it doesn't affect
+        the user.
+
+  - id: shared-sqlite-connection
+    title: One module-level SQLite connection shared across threads
+    location: app/db.py:3
+    category: reliability
+    priority: nice-to-find
+    key_point: >
+      check_same_thread=False lets FastAPI's threadpool use one connection
+      concurrently with no lock; handlers share transaction state, so one
+      handler's commit can commit another's work, and concurrent use can
+      raise errors.
+    answers:
+      good: >
+        All handlers use the same connection from different threads with no
+        locking, so they share one transaction — one request's commit can
+        commit another request's half-done writes, and concurrent use can
+        error out.
+      partial: >
+        Using one connection might be a bottleneck under load.
+      wrong: >
+        SQLite gives each thread its own connection automatically.
+
+  - id: predictable-codes
+    title: Codes come from Python's non-cryptographic random module
+    location: app/links.py:10-11
+    category: security
+    priority: nice-to-find
+    key_point: >
+      random is a predictable PRNG and 6 base62 chars is a small space, so
+      codes can be guessed or enumerated to discover private links; the
+      collision rate also rises as the table grows.
+    answers:
+      good: >
+        random isn't cryptographically secure and six characters is a
+        small space, so someone could guess or enumerate codes and find
+        links that were meant to be private.
+      partial: >
+        Codes might collide eventually as there are more links.
+      wrong: >
+        Random codes are impossible to guess, so links are private.
+
+  - id: unvalidated-redirect-target
+    title: Any URL is accepted and redirected to without validation
+    location: app/main.py:18-22
+    also_at: [app/main.py:35]
+    category: security
+    priority: nice-to-find
+    key_point: >
+      /shorten stores whatever string it is given and /{code} redirects to
+      it, enabling open redirects to phishing pages or non-http schemes
+      (javascript:, data:) under the service's trusted domain.
+    answers:
+      good: >
+        Nothing checks the URL, so anyone can create a short link under our
+        domain that sends people to a phishing site or a javascript: URL.
+      partial: >
+        Invalid URLs could be saved and the redirect would just fail.
+      wrong: >
+        FastAPI validates that url is a real web address.
+
+  - id: rate-limit-keyed-by-ip
+    title: Rate limiting is keyed on request.client.host
+    location: app/main.py:20
+    also_at: [app/ratelimit.py:9-11]
+    category: reliability
+    priority: nice-to-find
+    key_point: >
+      Behind a reverse proxy or load balancer every request appears to come
+      from the proxy's IP, so all users share one bucket; users behind one
+      NAT also throttle each other.
+    answers:
+      good: >
+        Behind a proxy every request shows the proxy's IP, so all users share
+        one limit and get 429s together; people behind the same NAT also
+        block each other.
+      partial: >
+        Users could get around it by changing IP.
+      wrong: >
+        client.host is always the real user's IP address.
