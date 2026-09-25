@@ -4,13 +4,12 @@ import sys
 from pathlib import Path
 
 from mentor import git as g
-from mentor.context import build_context
-from mentor.llm import MissingAPIKey, ensure_api_key, extract_decisions
 from mentor import ui
+from mentor.llm import MissingAPIKey, ensure_api_key
+from mentor.pipeline import analyze
 from mentor.record import DECISIONS_FILE, load_state, owned_titles, ownership, pending_decisions, save_state
 from mentor.scope import resolve_scope
 from mentor.session import QuitSession, read_input, run_session
-from mentor.verify import filter_decisions
 
 QUESTIONS_PER_RUN = 3
 
@@ -119,17 +118,15 @@ def review_scope(args):
   if not any(looks_like_code(path) for path in scope.files + scope.untracked):
     ui.note("Only config/docs changed, so decisions may be shallow. `mentor review --all` looks at everything.")
 
-  context = build_context(scope)
-  source = "whole files" if scope.kind == "all" else "diff only"
-  ui.step(args.verbose, "context", f"{source} · {len(context.text):,} chars")
-  if context.truncated:
-    ui.note("This change is large, so some files were left out. Try a narrower range (--since / --uncommitted).")
-
   with ui.working(f"Reading {scope.label} and finding design decisions…"):
-    found = extract_decisions(context.text, scope.label, owned_titles=owned_titles(state))
-  decisions, dropped = filter_decisions(found, context.visible_lines)
-  ui.step(args.verbose, "decisions", f"{len(found)} found · {len(dropped)} dropped · ranked")
-  for decision, reason in dropped:
+    analysis = analyze(scope, owned_titles=owned_titles(state))
+  decisions = analysis.decisions
+
+  ui.step(args.verbose, "context", f"{analysis.context_source} · {analysis.context_chars:,} chars")
+  if analysis.truncated:
+    ui.note("This change is large, so some files were left out. Try a narrower range (--since / --uncommitted).")
+  ui.step(args.verbose, "decisions", f"{len(analysis.found)} found · {len(analysis.dropped)} dropped · ranked")
+  for decision, reason in analysis.dropped:
     ui.step(args.verbose, "", f"  dropped “{decision.title}” — {reason}")
 
   state["last_reviewed_commit"] = g.head_commit()
