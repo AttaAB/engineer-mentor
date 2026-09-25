@@ -206,7 +206,8 @@ def print_summary(rows, title):
 
   console.print()
   console.print(table)
-  console.print("[dim]mean ± stdev across runs. Must@3: must-find labels in the top 3 questions. "
+  console.print("[dim]mean ± stdev across runs. Must@3: top-3 questions that are must-finds (of min(3, #must)). "
+                "Must(any): must-finds found at any rank. "
                 "Precision: kept decisions that are real. Grader: sample answers graded as labelled.[/]")
   if unverified:
     console.print(f"[yellow]* labels not yet human-verified: {', '.join(unverified)}[/]")
