@@ -36,6 +36,9 @@ split from `main`. On `main`, reviews everything since your last review
 (the first run asks what to look at). Uncommitted changes are always
 included.
 
+To skip paths (generated code, vendored libraries), list globs in a
+`.mentorignore` file at the repo root, one per line — e.g. `vendor/`.
+
 During a review, type an answer, or `h` (hint), `e` (explain), `s` (skip),
 `q` (quit — progress is saved).
 

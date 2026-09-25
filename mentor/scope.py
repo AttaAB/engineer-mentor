@@ -7,6 +7,7 @@ context.md §36.2 for the rules this implements.
 import time
 from dataclasses import dataclass, field
 from fnmatch import fnmatch
+from pathlib import Path
 
 from mentor import git as g
 
@@ -39,12 +40,30 @@ class Scope:
     return not self.files and not self.untracked
 
 
+IGNORE_FILE = ".mentorignore"
+
+
+def ignore_patterns():
+  """Built-in noise plus the repo's .mentorignore (one glob per line, # comments)."""
+  patterns = list(NOISE_PATTERNS)
+  try:
+    lines = Path(IGNORE_FILE).read_text().splitlines()
+  except FileNotFoundError:
+    return patterns
+
+  for line in lines:
+    line = line.strip()
+    if line and not line.startswith("#"):
+      patterns.append(line + "*" if line.endswith("/") else line)
+  return patterns
+
+
 def is_noise(path):
-  return any(fnmatch(path, pattern) for pattern in NOISE_PATTERNS)
+  return any(fnmatch(path, pattern) for pattern in ignore_patterns())
 
 
 def exclude_pathspecs():
-  return ["--", ".", *[f":(exclude){p}" for p in NOISE_PATTERNS]]
+  return ["--", ".", *[f":(exclude){p}" for p in ignore_patterns()]]
 
 
 def resolve_scope(args, state, ask):
