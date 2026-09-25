@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "engineering-mentor"
+version = "0.1.0"
+description = "Understand and own the design decisions in AI-written code."
+requires-python = ">=3.11"
+dependencies = [
+    "openai>=1.60",
+    "pydantic>=2",
+    "python-dotenv>=1",
+]
+
+[project.scripts]
+mentor = "mentor.cli:main"
+
+[tool.setuptools]
+packages = ["mentor"]

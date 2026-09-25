@@ -4,3 +4,5 @@ __pycache__/
 .DS_Store
 context.md
 resume.md
+*.egg-info/
+.mentor/
