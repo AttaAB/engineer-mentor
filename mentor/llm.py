@@ -98,6 +98,10 @@ Rules for questions:
 - Pose a concrete scenario and ask the developer to walk through what
   happens ("Two requests arrive at the same moment... what ends up in the
   database?"), rather than asking "why did you choose X?".
+- Aim the scenario at the decision's MOST important consequence — the one
+  a reviewer would expect the developer to know — not an edge case or a
+  contrived setup (no "suppose the clock jumps back at exactly the moment...").
+  A developer who understands the decision should be able to answer it.
 - Never state the consequence or the fix inside the question or the setup.
 - One decision per question. Answerable in a few sentences.
 - The hint nudges toward where to look or what to consider, without
